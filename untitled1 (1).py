@@ -107,7 +107,7 @@ def solve_task(update, context):
     update.message.reply_text(f'Ответ: {formatted_prediction}')
 
 def main():
-    updater = Updater(token='7057782957:AAFBsUuP-tEYsUE_uduYwo_71ai7YRWjwWU')
+    updater = Updater(token='7057782957:AAFBsUuP-tEYsUE_uduYwo_71ai7YRWjwWU', use_context=True)
     dispatcher = updater.dispatcher
 
     dispatcher.add_handler(CommandHandler('start', start))
