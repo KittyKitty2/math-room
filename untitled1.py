@@ -7,7 +7,7 @@ from sklearn.preprocessing import LabelEncoder
 from keras.preprocessing.sequence import pad_sequences
 import numpy as np
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, ConversationHandler
-from keras.preprocessing.text import Tokenizer
+from tensorflow.keras.preprocessing.text import Tokenizer
 
 tokenizer = Tokenizer()
 text = pd.read_table('constant_list.txt')
