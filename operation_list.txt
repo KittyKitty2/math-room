@@ -1,5 +1,3 @@
-operation
-
 add
 subtract
 multiply
