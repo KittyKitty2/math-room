@@ -3,62 +3,30 @@ from sklearn.model_selection import train_test_split
 from keras.layers import Input, Embedding, LSTM, Dense, Dropout
 from keras.models import Model
 from keras.optimizers import Adam
-from sklearn.preprocessing import LabelEncoder
 from keras.preprocessing.sequence import pad_sequences
 import numpy as np
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, ConversationHandler
-from tensorflow.keras.preprocessing.text import Tokenizer
 
-tokenizer = Tokenizer()
-text = pd.read_table('constant_list.txt')
-tokenizer.fit_on_texts(text['CONST_pi'])
-sequences = tokenizer.texts_to_sequences(text['CONST_pi'])[0]
+CHANNEL_ID = "@neironnii_kuci"
 
-tokenizer1 = Tokenizer()
-text1 = pd.read_table('operation_list.txt')
-tokenizer1.fit_on_texts(text1['add'])
-sequences1 = tokenizer1.texts_to_sequences(text1['add'])[0]
+file_path = 'data.json'
 
-seq_length = 1000
-sequences = [sequences[i:i+seq_length] for i in range(0, len(sequences), seq_length)]
+data_json = pd.read_json(file_path)
+df = pd.DataFrame({
+    'Problem': data_json['Problem'],
+    'Mathematical Expression': data_json['Mathematical Expression'],
+    'Result': data_json['Result'],
+})
 
-file_paths = ['challenge_test.json', 'dev.json', 'test.json', 'train.json']
+df['Problem'] = pd.to_numeric(df['Problem'], errors='coerce').fillna(0)
 
-def read_text_from_file(file_path):
-    with open(file_path, 'r') as file:
-        return file.read()
-
-dfs = []
-for file_path in file_paths:
-    data_json = pd.read_json(file_path)
-    df = pd.DataFrame({
-        'Problem': data_json['Problem'],
-        'category': data_json['category'],
-        'Rationale': data_json['Rationale'],
-        'options': data_json['options'],
-        'correct': data_json['correct'],
-        'annotated_formula': data_json['annotated_formula'],
-        'linear_formula': data_json['linear_formula']
-    })
-
-    label_encoder = LabelEncoder()
-    for col in ['Rationale', 'options', 'correct', 'annotated_formula', 'linear_formula']:
-        df[col] = label_encoder.fit_transform(df[col])
-
-    df['Problem'] = pd.to_numeric(df['Problem'], errors='coerce').fillna(0)
-    dfs.append(df)
-
-df_combined = pd.concat(dfs)
-
-X = df_combined.drop(columns=['category']).values
-y = pd.get_dummies(df_combined['category']).values
+X = df[['Mathematical Expression', 'Result']]
+y = df['Problem']
 
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
+# День 3
 max_length = 6
-X_train = pad_sequences(X_train, maxlen=max_length, dtype='float32', padding='post', truncating='post')
-X_test = pad_sequences(X_test, maxlen=max_length, dtype='float32', padding='post', truncating='post')
-
 vocab_size = 100000
 
 input_layer = Input(shape=(max_length,))
@@ -80,34 +48,52 @@ model.fit(X_train, y_train, epochs=25, batch_size=152)
 
 test_loss, test_acc = model.evaluate(X_test, y_test, verbose=3)
 print("Точность на тестовых данных: ", test_acc)
-global_label_encoder = label_encoder
 
+# День 4
 def start(update, context):
-    update.message.reply_text('Привет! Отправьте мне задачу для решения.')
+    chat_id = update.effective_chat.id
+    keyboard = [[InlineKeyboardButton("Я подписался!", callback_data='check_subscription')]]
+    context.bot.send_message(chat_id, "Для использования бота подпишитесь на наш канал: " + CHANNEL_ID, reply_markup=InlineKeyboardMarkup(keyboard))
+
+def check_subscription(update, context):
+    query = update.callback_query
+    user_id = query.from_user.id
+    try:
+        chat_member = context.bot.get_chat_member(CHANNEL_ID, user_id)
+        if chat_member.status in ["creator", "administrator", "member"]:
+            query.edit_message_text("Спасибо за подписку! Теперь вы можете использовать бота.")
+        else:
+            query.answer("Вы все еще не подписаны.")
+    except telegram.error.BadRequest:
+        query.answer("Произошла ошибка. Попробуйте позже.")
 
 def solve_task(update, context):
-    task = update.message.text
+      chat_member = context.bot.get_chat_member(CHANNEL_ID, chat_id)
+      if chat_member.status not in ["creator", "administrator", "member"]:
+        keyboard = [[InlineKeyboardButton("Я подписался!", callback_data='check_subscription')]]
+        context.bot.send_message(chat_id, "Для использования бота подпишитесь на наш канал: " + CHANNEL_ID, reply_markup=InlineKeyboardMarkup(keyboard))
+        return
 
-    task_df = pd.DataFrame({'Problem': [task],
-                            'Rationale': [''],
-                            'options': [''],
-                            'correct': [''],
-                            'annotated_formula': [''],
-                            'linear_formula': ['']})
+      if chat_member.status in ["creator", "administrator", "member"]:
+        task = update.message.text
 
-    task_df['Problem'] = task_df['Problem'].str.lower()
+        task_df = pd.DataFrame({'Problem': [task],
+                                'Mathematical Expression': [],
+                                'Result': []})
 
-    task_df['Problem'] = pd.to_numeric(task_df['Problem'], errors='coerce').fillna(0)
-    preprocessed_task = pad_sequences([task_df['Problem'].values], maxlen=max_length, dtype='float32', padding='post', truncating='post')
-    prediction = model.predict(preprocessed_task)
+        task_df['Problem'] = task_df['Problem'].str.lower()
 
-    predicted_category = np.argmax(prediction, axis=1)[0]
-    formatted_prediction = label_encoder.inverse_transform([predicted_category])[0]
+        task_df['Problem'] = pd.to_numeric(task_df['Problem'], errors='coerce').fillna(0)
+        preprocessed_task = pad_sequences([task_df['Problem'].values], maxlen=max_length, dtype='float32', padding='post', truncating='post')
+        prediction = model.predict(preprocessed_task)
 
-    update.message.reply_text(f'Ответ: {formatted_prediction}')
+        predicted_category = np.argmax(prediction, axis=1)[0]
+        formatted_prediction = label_encoder.inverse_transform([predicted_category])[0]
+
+        update.message.reply_text(f'Ответ: {formatted_prediction}')
 
 def main():
-    updater = Updater(token='7057782957:AAFBsUuP-tEYsUE_uduYwo_71ai7YRWjwWU', use_context=True)
+    updater = Updater(token='7057782957:AAFBsUuP-tEYsUE_uduYwo_71ai7YRWjwWU')
     dispatcher = updater.dispatcher
 
     dispatcher.add_handler(CommandHandler('start', start))
